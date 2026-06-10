@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams, Form } from "react-router";
 import { toast } from "sonner";
 import type { Route } from "./+types/courses.$slug";
 import {
@@ -37,11 +37,18 @@ import {
 } from "lucide-react";
 import { CourseImage } from "~/components/course-image";
 import { UserAvatar } from "~/components/user-avatar";
+import { StarRating } from "~/components/star-rating";
 import { data, isRouteErrorResponse } from "react-router";
 import { formatDuration, formatPrice } from "~/lib/utils";
 import { renderMarkdown } from "~/lib/markdown.server";
 import { resolveCountry } from "~/lib/country.server";
 import { calculatePppPrice, getCountryTierInfo } from "~/lib/ppp";
+import {
+  getAverageRatingForCourse,
+  getReviewCountForCourse,
+  getUserReviewForCourse,
+  createOrUpdateReview,
+} from "~/services/reviewService";
 
 export function meta({ data: loaderData }: Route.MetaArgs) {
   const title = loaderData?.course?.title ?? "Course";
@@ -102,6 +109,12 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     : courseWithDetails.price;
   const tierInfo = getCountryTierInfo(country);
 
+  const averageRating = getAverageRatingForCourse(course.id);
+  const reviewCount = getReviewCountForCourse(course.id);
+  const userReview = currentUserId
+    ? getUserReviewForCourse(currentUserId, course.id)
+    : null;
+
   return {
     course: courseWithDetails,
     salesCopyHtml,
@@ -113,10 +126,42 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     currentUserId,
     pppPrice,
     tierInfo,
+    averageRating,
+    reviewCount,
+    userReview,
   };
 }
 
-// No action — enrollment is handled via the purchase confirmation page
+export async function action({ request, params }: Route.ActionArgs) {
+  const currentUserId = await getCurrentUserId(request);
+  if (!currentUserId) {
+    throw data("You must be signed in to submit a review", { status: 401 });
+  }
+
+  const slug = params.slug;
+  const course = getCourseBySlug(slug);
+  if (!course) {
+    throw data("Course not found", { status: 404 });
+  }
+
+  const formData = await request.formData();
+  const rating = parseInt(formData.get("rating") as string, 10);
+
+  if (!rating || rating < 1 || rating > 5) {
+    throw data("Invalid rating. Must be between 1 and 5.", { status: 400 });
+  }
+
+  const enrolled = isUserEnrolled(currentUserId, course.id);
+  if (!enrolled) {
+    throw data("You must be enrolled in this course to leave a review", {
+      status: 403,
+    });
+  }
+
+  createOrUpdateReview(currentUserId, course.id, rating);
+
+  return { success: true };
+}
 
 export function HydrateFallback() {
   return (
@@ -181,9 +226,15 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
     currentUserId,
     pppPrice,
     tierInfo,
+    averageRating,
+    reviewCount,
+    userReview,
   } = loaderData;
   const isInstructor = currentUserId === course.instructorId;
   const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedRating, setSelectedRating] = useState<number>(
+    userReview?.rating ?? 0
+  );
 
   useEffect(() => {
     if (searchParams.get("already_enrolled") === "1") {
@@ -301,7 +352,7 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
         <p className="mb-4 text-lg text-muted-foreground">
           {course.description}
         </p>
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+        <div className="mb-4 flex items-center gap-4 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <UserAvatar
               name={course.instructorName}
@@ -321,6 +372,16 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
             </span>
           )}
         </div>
+        {averageRating !== null && (
+          <div className="mb-4">
+            <StarRating
+              rating={averageRating}
+              size="md"
+              showCount
+              reviewCount={reviewCount}
+            />
+          </div>
+        )}
       </div>
 
       {/* Two-column: sales copy left, sidebar right */}
@@ -357,6 +418,34 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
               lessonProgressMap={lessonProgressMap}
             />
           </div>
+
+          {/* Review form for enrolled students */}
+          {enrolled && !isInstructor && (
+            <div className="mt-8 rounded-lg border bg-muted/50 p-6">
+              <h3 className="mb-2 text-lg font-semibold">
+                {userReview ? "Update Your Review" : "Rate This Course"}
+              </h3>
+              <p className="mb-4 text-sm text-muted-foreground">
+                {userReview
+                  ? "Change your rating for this course"
+                  : "Share your experience with this course"}
+              </p>
+              <Form method="post">
+                <input type="hidden" name="rating" value={selectedRating} />
+                <div className="mb-4">
+                  <StarRating
+                    rating={selectedRating}
+                    size="lg"
+                    interactive
+                    onRatingChange={setSelectedRating}
+                  />
+                </div>
+                <Button type="submit" disabled={selectedRating === 0}>
+                  {userReview ? "Update Review" : "Submit Review"}
+                </Button>
+              </Form>
+            </div>
+          )}
         </div>
 
         {/* Right column: progress/enrollment card */}

@@ -9,12 +9,14 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { AlertTriangle, BookOpen, Search } from "lucide-react";
 import { CourseImage } from "~/components/course-image";
 import { UserAvatar } from "~/components/user-avatar";
+import { StarRating } from "~/components/star-rating";
 import { getCurrentUserId } from "~/lib/session";
 import { formatPrice } from "~/lib/utils";
 import { getUserEnrolledCourses } from "~/services/enrollmentService";
 import { calculateProgress, getCompletedLessonCount } from "~/services/progressService";
 import { resolveCountry } from "~/lib/country.server";
 import { calculatePppPrice } from "~/lib/ppp";
+import { getAverageRatingForCourse, getReviewCountForCourse } from "~/services/reviewService";
 
 export function meta() {
   return [
@@ -60,12 +62,16 @@ export async function loader({ request }: Route.LoaderArgs) {
     const pppPrice = course.pppEnabled
       ? calculatePppPrice(course.price, country)
       : course.price;
+    const averageRating = getAverageRatingForCourse(course.id);
+    const reviewCount = getReviewCountForCourse(course.id);
     return {
       ...course,
       lessonCount: getLessonCountForCourse(course.id),
       progress: userProgress?.progress ?? null,
       completedLessons: userProgress?.completedLessons ?? null,
       pppPrice,
+      averageRating,
+      reviewCount,
     };
   });
 
@@ -204,6 +210,16 @@ export default function CourseCatalog({ loaderData }: Route.ComponentProps) {
                   <h3 className="text-lg font-semibold leading-tight group-hover:text-primary">
                     {course.title}
                   </h3>
+                  {course.averageRating !== null && (
+                    <div className="mt-2">
+                      <StarRating
+                        rating={course.averageRating}
+                        size="sm"
+                        showCount
+                        reviewCount={course.reviewCount}
+                      />
+                    </div>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <p className="line-clamp-2 text-sm text-muted-foreground">
