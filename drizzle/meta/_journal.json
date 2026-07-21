@@ -29,6 +29,20 @@
       "when": 1781062887555,
       "tag": "0003_sparkling_riptide",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783222800000,
+      "tag": "0004_lesson_comments",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783303327541,
+      "tag": "0005_far_peter_parker",
+      "breakpoints": true
     }
   ]
 }

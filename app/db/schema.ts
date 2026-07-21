@@ -1,4 +1,10 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  real,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 export enum UserRole {
   Student = "student",
@@ -254,6 +260,20 @@ export const videoWatchEvents = sqliteTable("video_watch_events", {
     .$defaultFn(() => new Date().toISOString()),
 });
 
+export const lessonComments = sqliteTable("lesson_comments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  lessonId: integer("lesson_id")
+    .notNull()
+    .references(() => lessons.id),
+  content: text("content").notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
 export const courseReviews = sqliteTable("course_reviews", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id")
@@ -270,3 +290,25 @@ export const courseReviews = sqliteTable("course_reviews", {
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
 });
+
+export const lessonBookmarks = sqliteTable(
+  "lesson_bookmarks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id),
+    lessonId: integer("lesson_id")
+      .notNull()
+      .references(() => lessons.id),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => ({
+    userLessonUnique: uniqueIndex("lesson_bookmarks_user_lesson_unique").on(
+      table.userId,
+      table.lessonId
+    ),
+  })
+);

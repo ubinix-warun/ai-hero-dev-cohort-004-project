@@ -46,6 +46,7 @@ async function seed() {
   // Drop and recreate tables for a clean seed
   sqlite.exec(`
     DROP TABLE IF EXISTS video_watch_events;
+    DROP TABLE IF EXISTS lesson_comments;
     DROP TABLE IF EXISTS course_reviews;
     DROP TABLE IF EXISTS quiz_answers;
     DROP TABLE IF EXISTS quiz_attempts;
@@ -1144,6 +1145,39 @@ You've completed the Building REST APIs course. You now have the skills to build
   console.log(
     `Created course "${course2.title}" with ${c2Modules.length} modules and ${course2LessonIds.length} lessons.`
   );
+
+  // ─── Lesson Comments ───
+  // Seed a few discussion comments on the first lesson of course 1,
+  // from enrolled students and the course instructor (Sarah Chen).
+
+  const [firstLesson] = course1LessonIds;
+  db.insert(schema.lessonComments)
+    .values([
+      {
+        userId: students[0].id, // Emma
+        lessonId: firstLesson,
+        content:
+          "This overview really clicked for me. The compile-time vs runtime distinction finally makes sense.",
+        createdAt: daysAgo(50),
+      },
+      {
+        userId: instructor1.id, // Sarah Chen (instructor)
+        lessonId: firstLesson,
+        content:
+          "Glad it helped, Emma! The next lesson walks through the install step by step if you want to follow along.",
+        createdAt: daysAgo(50),
+      },
+      {
+        userId: students[2].id, // Olivia
+        lessonId: firstLesson,
+        content:
+          "Quick question — can I use TypeScript with plain node, or do I need a bundler?",
+        createdAt: daysAgo(48),
+      },
+    ])
+    .run();
+
+  console.log("Created lesson comments.");
 
   // ─── Quizzes ───
   // Add quizzes to some lessons in both courses

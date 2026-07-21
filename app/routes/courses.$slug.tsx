@@ -27,6 +27,7 @@ import {
 } from "~/components/ui/tabs";
 import {
   AlertTriangle,
+  Bookmark,
   BookOpen,
   CheckCircle2,
   Circle,
@@ -49,6 +50,7 @@ import {
   getUserReviewForCourse,
   createOrUpdateReview,
 } from "~/services/reviewService";
+import { getBookmarkedLessonIds } from "~/services/bookmarkService";
 
 export function meta({ data: loaderData }: Route.MetaArgs) {
   const title = loaderData?.course?.title ?? "Course";
@@ -78,6 +80,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   let progress = 0;
   let lessonProgressMap: Record<number, string> = {};
   let nextLessonId: number | null = null;
+  let bookmarkedLessonIds: number[] = [];
 
   if (currentUserId) {
     enrolled = isUserEnrolled(currentUserId, course.id);
@@ -95,6 +98,11 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
       const nextLesson = getNextIncompleteLesson(currentUserId, course.id);
       nextLessonId = nextLesson?.id ?? null;
+
+      bookmarkedLessonIds = getBookmarkedLessonIds({
+        userId: currentUserId,
+        courseId: course.id,
+      });
     }
   }
 
@@ -129,6 +137,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     averageRating,
     reviewCount,
     userReview,
+    bookmarkedLessonIds,
   };
 }
 
@@ -229,7 +238,9 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
     averageRating,
     reviewCount,
     userReview,
+    bookmarkedLessonIds,
   } = loaderData;
+  const bookmarkedLessonIdsSet = new Set(bookmarkedLessonIds);
   const isInstructor = currentUserId === course.instructorId;
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedRating, setSelectedRating] = useState<number>(
@@ -416,6 +427,7 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
               enrolled={enrolled}
               isInstructor={isInstructor}
               lessonProgressMap={lessonProgressMap}
+              bookmarkedLessonIds={bookmarkedLessonIdsSet}
             />
           </div>
 
@@ -544,6 +556,7 @@ function CourseContent({
   enrolled,
   isInstructor,
   lessonProgressMap,
+  bookmarkedLessonIds,
 }: {
   course: {
     id: number;
@@ -561,6 +574,7 @@ function CourseContent({
   enrolled: boolean;
   isInstructor: boolean;
   lessonProgressMap: Record<number, string>;
+  bookmarkedLessonIds: Set<number>;
 }) {
   return (
     <div>
@@ -571,106 +585,119 @@ function CourseContent({
         </p>
       ) : (
         <div className="space-y-4">
-          {course.modules.map((mod) => (
-            <Card key={mod.id}>
-              <CardHeader>
-                <h3 className="font-semibold">
-                  <Link
-                    to={`/courses/${course.slug}/${mod.id}`}
-                    className="hover:underline"
-                  >
-                    {mod.title}
-                  </Link>
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  {mod.lessons.length} lessons
-                </p>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {mod.lessons.map((lesson) => {
-                    const status = lessonProgressMap[lesson.id];
-                    const isCompleted =
-                      status === LessonProgressStatus.Completed;
-                    const isLessonInProgress =
-                      status === LessonProgressStatus.InProgress;
+          {course.modules.map((mod) => {
+            const moduleHasBookmarks = mod.lessons.some((l) =>
+              bookmarkedLessonIds.has(l.id)
+            );
 
-                    if (isInstructor) {
+            return (
+              <Card key={mod.id}>
+                <CardHeader>
+                  <h3 className="inline-flex items-center gap-2 font-semibold">
+                    <Link
+                      to={`/courses/${course.slug}/${mod.id}`}
+                      className="hover:underline"
+                    >
+                      {mod.title}
+                    </Link>
+                    {moduleHasBookmarks && (
+                      <Bookmark className="size-3.5 shrink-0 fill-amber-500 text-amber-500" />
+                    )}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {mod.lessons.length} lessons
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2">
+                    {mod.lessons.map((lesson) => {
+                      const status = lessonProgressMap[lesson.id];
+                      const isCompleted =
+                        status === LessonProgressStatus.Completed;
+                      const isLessonInProgress =
+                        status === LessonProgressStatus.InProgress;
+                      const isBookmarked = bookmarkedLessonIds.has(lesson.id);
+
+                      if (isInstructor) {
+                        return (
+                          <li key={lesson.id}>
+                            <Link
+                              to={`/instructor/${course.id}/lessons/${lesson.id}`}
+                              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted"
+                            >
+                              <Pencil className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="flex-1">{lesson.title}</span>
+                              {lesson.durationMinutes && (
+                                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Clock className="size-3" />
+                                  {formatDuration(
+                                    lesson.durationMinutes,
+                                    true,
+                                    false,
+                                    false
+                                  )}
+                                </span>
+                              )}
+                            </Link>
+                          </li>
+                        );
+                      }
+
                       return (
                         <li key={lesson.id}>
-                          <Link
-                            to={`/instructor/${course.id}/lessons/${lesson.id}`}
-                            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted"
-                          >
-                            <Pencil className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="flex-1">{lesson.title}</span>
-                            {lesson.durationMinutes && (
-                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Clock className="size-3" />
-                                {formatDuration(
-                                  lesson.durationMinutes,
-                                  true,
-                                  false,
-                                  false
-                                )}
-                              </span>
-                            )}
-                          </Link>
+                          {enrolled ? (
+                            <Link
+                              to={`/courses/${course.slug}/lessons/${lesson.id}`}
+                              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted"
+                            >
+                              {isCompleted ? (
+                                <CheckCircle2 className="size-4 shrink-0 text-green-500" />
+                              ) : isLessonInProgress ? (
+                                <PlayCircle className="size-4 shrink-0 text-blue-500" />
+                              ) : (
+                                <Circle className="size-4 shrink-0 text-muted-foreground" />
+                              )}
+                              <span className="flex-1">{lesson.title}</span>
+                              {lesson.durationMinutes && (
+                                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Clock className="size-3" />
+                                  {formatDuration(
+                                    lesson.durationMinutes,
+                                    true,
+                                    false,
+                                    false
+                                  )}
+                                </span>
+                              )}
+                              {isBookmarked && (
+                                <Bookmark className="size-4 shrink-0 fill-amber-500 text-amber-500" />
+                              )}
+                            </Link>
+                          ) : (
+                            <div className="flex items-center gap-3 px-3 py-2 text-sm">
+                              <Circle className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="flex-1">{lesson.title}</span>
+                              {lesson.durationMinutes && (
+                                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Clock className="size-3" />
+                                  {formatDuration(
+                                    lesson.durationMinutes,
+                                    true,
+                                    false,
+                                    false
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </li>
                       );
-                    }
-
-                    return (
-                      <li key={lesson.id}>
-                        {enrolled ? (
-                          <Link
-                            to={`/courses/${course.slug}/lessons/${lesson.id}`}
-                            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted"
-                          >
-                            {isCompleted ? (
-                              <CheckCircle2 className="size-4 shrink-0 text-green-500" />
-                            ) : isLessonInProgress ? (
-                              <PlayCircle className="size-4 shrink-0 text-blue-500" />
-                            ) : (
-                              <Circle className="size-4 shrink-0 text-muted-foreground" />
-                            )}
-                            <span className="flex-1">{lesson.title}</span>
-                            {lesson.durationMinutes && (
-                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Clock className="size-3" />
-                                {formatDuration(
-                                  lesson.durationMinutes,
-                                  true,
-                                  false,
-                                  false
-                                )}
-                              </span>
-                            )}
-                          </Link>
-                        ) : (
-                          <div className="flex items-center gap-3 px-3 py-2 text-sm">
-                            <Circle className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="flex-1">{lesson.title}</span>
-                            {lesson.durationMinutes && (
-                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Clock className="size-3" />
-                                {formatDuration(
-                                  lesson.durationMinutes,
-                                  true,
-                                  false,
-                                  false
-                                )}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </CardContent>
-            </Card>
-          ))}
+                    })}
+                  </ul>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
